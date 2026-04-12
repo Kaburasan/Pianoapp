@@ -16,31 +16,25 @@
     button { font-family: 'Nunito', sans-serif; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
     @keyframes pop { 0%,100% { transform:scale(1); } 50% { transform:scale(1.08); } }
+    @keyframes slideDown { from { opacity:0; max-height:0; } to { opacity:1; max-height:600px; } }
     ::-webkit-scrollbar { height: 4px; width: 4px; }
     ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-
-  <!-- React + ReactDOM (production) -->
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <!-- Babel standalone to compile JSX in-browser -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-    // ─────────────────────────────────────────────
-    // AUDIO
-    // ─────────────────────────────────────────────
+    // ── AUDIO ──────────────────────────────────────────────────────────────────
     let _audioCtx = null;
     function getAudioCtx() {
       if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       return _audioCtx;
     }
-
     function playPianoNote(noteName, duration = 0.8) {
       const FREQS = {
         C3:130.81,D3:146.83,E3:164.81,F3:174.61,G3:196.00,A3:220.00,B3:246.94,
@@ -49,6 +43,8 @@
         "C#4":277.18,"D#4":311.13,"F#4":369.99,"G#4":415.30,"A#4":466.16,
         C5:523.25,D5:587.33,E5:659.25,F5:698.46,G5:783.99,A5:880.00,B5:987.77,
         "C#5":554.37,"D#5":622.25,"F#5":739.99,"G#5":830.61,"A#5":932.33,
+        C6:1046.50,D6:1174.66,E6:1318.51,F6:1396.91,G6:1567.98,A6:1760.00,B6:1975.53,
+        "C#6":1108.73,"D#6":1244.51,"F#6":1479.98,"G#6":1661.22,"A#6":1864.66,
       };
       try {
         const ctx = getAudioCtx();
@@ -62,333 +58,363 @@
         osc1.connect(gain1); gain1.connect(master);
         osc2.connect(gain2); gain2.connect(master);
         master.connect(ctx.destination);
-        osc1.type = "triangle";
-        osc2.type = "sine";
-        osc1.frequency.value = freq;
-        osc2.frequency.value = freq * 2;
+        osc1.type = "triangle"; osc2.type = "sine";
+        osc1.frequency.value = freq; osc2.frequency.value = freq * 2;
         const now = ctx.currentTime;
         gain1.gain.setValueAtTime(0, now);
-        gain1.gain.linearRampToValueAtTime(0.35, now + 0.01);
+        gain1.gain.linearRampToValueAtTime(0.32, now + 0.01);
         gain1.gain.exponentialRampToValueAtTime(0.001, now + duration);
         gain2.gain.setValueAtTime(0, now);
-        gain2.gain.linearRampToValueAtTime(0.08, now + 0.01);
+        gain2.gain.linearRampToValueAtTime(0.07, now + 0.01);
         gain2.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.5);
         osc1.start(now); osc1.stop(now + duration + 0.1);
         osc2.start(now); osc2.stop(now + duration + 0.1);
-      } catch (e) {}
+      } catch(e) {}
     }
 
-    // ─────────────────────────────────────────────
-    // DATA
-    // ─────────────────────────────────────────────
+    // ── NOTE NAMING SYSTEMS ────────────────────────────────────────────────────
+    // noteStyle: "abc" | "doremi"
+    const NOTE_LABEL = {
+      abc:    { C:"C", D:"D", E:"E", F:"F", G:"G", A:"A", B:"B" },
+      doremi: { C:"Do", D:"Re", E:"Mi", F:"Fa", G:"Sol", A:"La", B:"Si" },
+    };
+    const SHARP_LABEL = {
+      abc:    { "C#":"C#","D#":"D#","F#":"F#","G#":"G#","A#":"A#" },
+      doremi: { "C#":"Do#","D#":"Re#","F#":"Fa#","G#":"Sol#","A#":"La#" },
+    };
+
+    // ── NOTE PERSONALITIES ─────────────────────────────────────────────────────
+    const NOTE_COLORS  = {C:"#FF6B9D",D:"#FF9F43",E:"#FECA57",F:"#48DBFB",G:"#1DD1A1",A:"#845EF7",B:"#FF6348"};
+    const NOTE_ANIMALS = {C:"🐱",D:"🐶",E:"🐘",F:"🐸",G:"🦒",A:"🐊",B:"🐻"};
+    const NOTE_FUN     = {
+      abc:    {C:"Cat C",D:"Dog D",E:"Elephant E",F:"Frog F",G:"Giraffe G",A:"Alligator A",B:"Bear B"},
+      doremi: {C:"Cat Do",D:"Dog Re",E:"Elephant Mi",F:"Frog Fa",G:"Giraffe Sol",A:"Alligator La",B:"Bear Si"},
+    };
+
+    // ── KEYBOARD LAYOUT — 3 octaves C3–B5 ────────────────────────────────────
+    const WHITE_KEYS = [];
+    const BLACK_KEY_MAP = [];
+    [3,4,5].forEach(oct => {
+      ["C","D","E","F","G","A","B"].forEach(n => WHITE_KEYS.push({note:n,oct}));
+    });
+    // Build black key positions from white key indices
+    const BLACK_PATTERN = [
+      {note:"C#",offset:0},{note:"D#",offset:1},
+      {note:"F#",offset:3},{note:"G#",offset:4},{note:"A#",offset:5},
+    ];
+    [3,4,5].forEach((oct,oi) => {
+      BLACK_PATTERN.forEach(({note,offset}) => {
+        BLACK_KEY_MAP.push({note,oct,afterIdx: oi*7 + offset});
+      });
+    });
+
+    // ── LEVELS ─────────────────────────────────────────────────────────────────
     const LEVELS = {
-      explorer:   { label:"🌟 Explorer",   age:"3–5",  color:"#FF6B9D", grad:"135deg, #FF6B9D, #FF9F43" },
-      adventurer: { label:"🚀 Adventurer", age:"5–7",  color:"#845EF7", grad:"135deg, #845EF7, #48DBFB" },
-      musician:   { label:"🎵 Musician",   age:"7–10", color:"#20C997", grad:"135deg, #20C997, #845EF7" },
+      explorer:   {label:"🌟 Explorer",   age:"3–5",  color:"#FF6B9D", grad:"135deg,#FF6B9D,#FF9F43"},
+      adventurer: {label:"🚀 Adventurer", age:"5–7",  color:"#845EF7", grad:"135deg,#845EF7,#48DBFB"},
+      musician:   {label:"🎵 Musician",   age:"7–10", color:"#20C997", grad:"135deg,#20C997,#845EF7"},
     };
 
-    const WHITE_KEYS = [
-      {note:"C",oct:3},{note:"D",oct:3},{note:"E",oct:3},{note:"F",oct:3},{note:"G",oct:3},{note:"A",oct:3},{note:"B",oct:3},
-      {note:"C",oct:4},{note:"D",oct:4},{note:"E",oct:4},{note:"F",oct:4},{note:"G",oct:4},{note:"A",oct:4},{note:"B",oct:4},
-    ];
-    const BLACK_KEY_MAP = [
-      {note:"C#",oct:3,afterIdx:0},{note:"D#",oct:3,afterIdx:1},
-      {note:"F#",oct:3,afterIdx:3},{note:"G#",oct:3,afterIdx:4},{note:"A#",oct:3,afterIdx:5},
-      {note:"C#",oct:4,afterIdx:7},{note:"D#",oct:4,afterIdx:8},
-      {note:"F#",oct:4,afterIdx:10},{note:"G#",oct:4,afterIdx:11},{note:"A#",oct:4,afterIdx:12},
-    ];
-
-    const NOTE_COLORS = {C:"#FF6B9D",D:"#FF9F43",E:"#FECA57",F:"#48DBFB",G:"#1DD1A1",A:"#845EF7",B:"#FF6348"};
-    const NOTE_ANIMALS = {C:"🐱",D:"🐶",E:"🐸",F:"🐠",G:"🐢",A:"🦋",B:"🐦"};
-    const NOTE_FUN_NAME = {C:"Catty C",D:"Doggy D",E:"Effy E",F:"Fishy F",G:"Gerry G",A:"Ali A",B:"Birdy B"};
-
+    // ── SONGS ──────────────────────────────────────────────────────────────────
     const SONGS = [
-      {
-        id:"twinkle", title:"Twinkle Twinkle", emoji:"⭐", level:"explorer",
-        notes:["C4","C4","G4","G4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4"],
-        timing:[500,500,500,500,500,500,900,500,500,500,500,500,500,900],
-      },
-      {
-        id:"mary", title:"Mary Had a Lamb", emoji:"🐑", level:"explorer",
-        notes:["E4","D4","C4","D4","E4","E4","E4","D4","D4","D4","E4","G4","G4"],
-        timing:[400,400,400,400,400,400,700,400,400,700,400,400,900],
-      },
-      {
-        id:"hotcross", title:"Hot Cross Buns", emoji:"🥐", level:"explorer",
-        notes:["E4","D4","C4","E4","D4","C4","C4","C4","C4","C4","D4","D4","D4","D4","E4","D4","C4"],
-        timing:[400,400,800,400,400,800,250,250,250,250,250,250,250,250,400,400,800],
-      },
-      {
-        id:"baa", title:"Baa Baa Black Sheep", emoji:"🐏", level:"explorer",
-        notes:["C4","C4","G4","G4","A4","A4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4"],
-        timing:[400,400,400,300,300,300,300,300,700,400,300,300,300,300,300,800],
-      },
-      {
-        id:"ode", title:"Ode to Joy", emoji:"🎶", level:"adventurer",
-        notes:["E4","E4","F4","G4","G4","F4","E4","D4","C4","C4","D4","E4","E4","D4","D4"],
-        timing:[400,400,400,400,400,400,400,400,400,400,400,400,550,250,800],
-      },
-      {
-        id:"jingle", title:"Jingle Bells", emoji:"🔔", level:"adventurer",
-        notes:["E4","E4","E4","E4","E4","E4","E4","G4","C4","D4","E4","F4","F4","F4","F4","F4","E4","E4","E4","E4","D4","D4","E4","D4","G4"],
-        timing:[300,300,600,300,300,600,300,300,300,300,900,300,300,300,300,150,300,300,300,150,300,300,300,300,900],
-      },
-      {
-        id:"cancan", title:"Can Can", emoji:"🩰", level:"adventurer",
-        notes:["G4","G4","G4","E4","G4","G4","G4","E4","G4","A4","G4","F4","E4","F4","G4","C4","C4","C4"],
-        timing:[200,200,400,400,200,200,400,400,200,200,200,200,200,200,400,200,200,600],
-      },
-      {
-        id:"furelise", title:"Für Elise (intro)", emoji:"🎵", level:"musician",
-        notes:["E5","D#5","E5","D#5","E5","B4","D5","C5","A4","C4","E4","A4","B4","E4","G#4","B4","C5"],
-        timing:[300,300,300,300,300,300,300,300,500,300,300,300,500,300,300,300,700],
-      },
-      {
-        id:"minuet", title:"Minuet in G", emoji:"👑", level:"musician",
-        notes:["D4","G4","A4","B4","C5","B4","A4","C5","D5","G4","G4","D5","C5","B4","A4","G4"],
-        timing:[400,400,400,400,400,400,800,400,400,400,400,400,400,400,400,900],
-      },
+      // ── EXPLORER ──
+      {id:"twinkle",   title:"Twinkle Twinkle",      emoji:"⭐", level:"explorer",
+       notes:["C4","C4","G4","G4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4"],
+       timing:[500,500,500,500,500,500,900,500,500,500,500,500,500,900]},
+      {id:"mary",      title:"Mary Had a Lamb",       emoji:"🐑", level:"explorer",
+       notes:["E4","D4","C4","D4","E4","E4","E4","D4","D4","D4","E4","G4","G4"],
+       timing:[400,400,400,400,400,400,700,400,400,700,400,400,900]},
+      {id:"hotcross",  title:"Hot Cross Buns",        emoji:"🥐", level:"explorer",
+       notes:["E4","D4","C4","E4","D4","C4","C4","C4","C4","C4","D4","D4","D4","D4","E4","D4","C4"],
+       timing:[400,400,800,400,400,800,250,250,250,250,250,250,250,250,400,400,800]},
+      {id:"baa",       title:"Baa Baa Black Sheep",   emoji:"🐏", level:"explorer",
+       notes:["C4","C4","G4","G4","A4","A4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4"],
+       timing:[400,400,400,300,300,300,300,300,700,400,300,300,300,300,300,800]},
+      {id:"birthday",  title:"Happy Birthday",        emoji:"🎂", level:"explorer",
+       notes:["C4","C4","D4","C4","F4","E4","C4","C4","D4","C4","G4","F4","C4","C4","C5","A4","F4","E4","D4","A#4","A#4","A4","F4","G4","F4"],
+       timing:[300,150,450,450,450,900,300,150,450,450,450,900,300,150,450,450,450,450,900,300,150,450,450,450,900]},
+      {id:"london",    title:"London Bridge",         emoji:"🌉", level:"explorer",
+       notes:["G4","A4","G4","F4","E4","F4","G4","D4","E4","F4","E4","F4","G4","G4","A4","G4","F4","E4","G4","C4"],
+       timing:[300,300,300,300,300,300,600,300,300,600,300,300,600,300,300,300,300,300,300,900]},
+      {id:"itsy",      title:"Itsy Bitsy Spider",     emoji:"🕷️", level:"explorer",
+       notes:["C4","F4","F4","F4","G4","A4","A4","G4","F4","A4","A4","A4","A#4","C5","C5","A#4","A4","A4","G4","F4"],
+       timing:[300,600,200,200,300,600,300,300,600,600,200,200,300,600,300,300,600,200,300,900]},
+      {id:"oldmcd",    title:"Old MacDonald",         emoji:"🐄", level:"explorer",
+       notes:["C4","C4","C4","G3","A3","A3","G3","E4","E4","D4","D4","C4","G3","C4","C4","C4","G3","A3","A3","G3"],
+       timing:[400,400,400,400,400,400,700,400,400,400,400,700,400,400,400,400,400,400,400,900]},
+      {id:"abc",       title:"ABC Song",              emoji:"🔤", level:"explorer",
+       notes:["C4","C4","G4","G4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4","G4","G4","F4","F4","E4","E4","D4","G4","G4","F4","F4","E4","E4","D4","C4","C4","G4","G4","A4","A4","G4","F4","F4","E4","E4","D4","D4","C4"],
+       timing:[400,400,400,400,400,400,700,400,400,400,400,400,400,700,400,400,400,400,400,400,700,400,400,400,400,400,400,700,400,400,400,400,400,400,700,400,400,400,400,400,400,900]},
+      // ── ADVENTURER ──
+      {id:"ode",       title:"Ode to Joy",            emoji:"🎶", level:"adventurer",
+       notes:["E4","E4","F4","G4","G4","F4","E4","D4","C4","C4","D4","E4","E4","D4","D4"],
+       timing:[400,400,400,400,400,400,400,400,400,400,400,400,550,250,800]},
+      {id:"jingle",    title:"Jingle Bells",          emoji:"🔔", level:"adventurer",
+       notes:["E4","E4","E4","E4","E4","E4","E4","G4","C4","D4","E4","F4","F4","F4","F4","F4","E4","E4","E4","E4","D4","D4","E4","D4","G4"],
+       timing:[300,300,600,300,300,600,300,300,300,300,900,300,300,300,300,150,300,300,300,150,300,300,300,300,900]},
+      {id:"cancan",    title:"Can Can",               emoji:"🩰", level:"adventurer",
+       notes:["G4","G4","G4","E4","G4","G4","G4","E4","G4","A4","G4","F4","E4","F4","G4","C4","C4","C4"],
+       timing:[200,200,400,400,200,200,400,400,200,200,200,200,200,200,400,200,200,600]},
+      {id:"beethoven5",title:"Beethoven's 5th",       emoji:"🎼", level:"adventurer",
+       notes:["G4","G4","G4","D#4","F4","F4","F4","D4"],
+       timing:[200,200,200,700,200,200,200,900]},
+      {id:"scarborough",title:"Scarborough Fair",     emoji:"🌿", level:"adventurer",
+       notes:["A3","C4","D4","D4","C4","A3","C4","D4","F4","E4","D4","C4","D4","A3","G3","A3"],
+       timing:[600,400,800,400,400,600,400,600,400,400,400,400,800,400,400,900]},
+      {id:"yankee",    title:"Yankee Doodle",         emoji:"🎩", level:"adventurer",
+       notes:["C4","C4","D4","E4","C4","E4","D4","G3","C4","C4","D4","E4","C4","B3","C4"],
+       timing:[300,300,300,300,300,300,600,300,300,300,300,300,300,300,900]},
+      {id:"clementine",title:"Oh My Darling",        emoji:"🪨", level:"adventurer",
+       notes:["C4","E4","G4","G4","E4","G4","A4","G4","E4","C4","E4","G4","G4","E4","G4","G4"],
+       timing:[300,300,600,300,300,600,300,300,300,300,300,600,300,300,600,900]},
+      {id:"minuet",    title:"Minuet in G",           emoji:"👑", level:"adventurer",
+       notes:["D4","G4","A4","B4","C5","B4","A4","C5","D5","G4","G4","D5","C5","B4","A4","G4"],
+       timing:[400,400,400,400,400,400,800,400,400,400,400,400,400,400,400,900]},
+      {id:"entertainer",title:"The Entertainer",     emoji:"🎪", level:"adventurer",
+       notes:["D4","E4","C4","A3","C4","E4","D4","E4","C4","E4","D4","C4","A3","G3","A3","C4","E4","G4","A4","G4","E4","C4","D4"],
+       timing:[200,200,300,300,300,300,600,200,200,300,300,300,300,600,200,200,200,200,300,300,300,300,900]},
+      // ── MUSICIAN ──
+      {id:"furelise",  title:"Für Elise (intro)",    emoji:"🎵", level:"musician",
+       notes:["E5","D#5","E5","D#5","E5","B4","D5","C5","A4","C4","E4","A4","B4","E4","G#4","B4","C5"],
+       timing:[300,300,300,300,300,300,300,300,500,300,300,300,500,300,300,300,700]},
+      {id:"moonlight", title:"Moonlight Sonata",     emoji:"🌙", level:"musician",
+       notes:["G#3","C#4","E4","G#3","C#4","E4","A3","C#4","E4","A3","C#4","E4","G#3","B3","E4","G#3","B3","E4"],
+       timing:[300,300,600,300,300,600,300,300,600,300,300,600,300,300,600,300,300,900]},
+      {id:"prelude",   title:"Bach Prelude (C)",     emoji:"🎹", level:"musician",
+       notes:["C4","E4","G4","C5","E5","C4","E4","G4","C5","E5","A3","E4","A4","C5","E5","A3","E4","A4","C5","E5"],
+       timing:[200,200,200,200,400,200,200,200,200,400,200,200,200,200,400,200,200,200,200,700]},
+      {id:"canon",     title:"Canon in D",           emoji:"🕊️", level:"musician",
+       notes:["D4","A3","B3","F#3","G3","D3","G3","A3","D4","A3","B3","F#3","G3","D4","G3","A3"],
+       timing:[600,600,600,600,600,600,600,600,600,600,600,600,600,600,600,900]},
+      {id:"gymno",     title:"Gymnopédie No.1",      emoji:"🌸", level:"musician",
+       notes:["A3","E4","A4","B4","A4","E4","G3","E4","B4","D5","B4","E4","F#3","E4","A4","C5","A4","E4"],
+       timing:[600,300,600,600,600,600,600,300,600,600,600,600,600,300,600,600,600,900]},
+      {id:"river",     title:"River Flows in You",   emoji:"💧", level:"musician",
+       notes:["A3","B3","C#4","E4","A3","B3","C#4","E4","F#3","A3","C#4","E4","F#3","A3","C#4","E4"],
+       timing:[300,300,300,600,300,300,300,600,300,300,300,600,300,300,300,900]},
+      {id:"entertainer2",title:"Maple Leaf Rag",     emoji:"🍁", level:"musician",
+       notes:["A#4","A4","A#4","D5","F4","G#4","A4","A#4","A4","A#4","G5","F5","D#5","D5","C5","A#4"],
+       timing:[200,100,300,400,200,200,200,400,200,100,300,200,200,200,200,900]},
     ];
 
+    // ── LESSONS ────────────────────────────────────────────────────────────────
     const LESSONS = [
-      {
-        id:"meet-keys", title:"Meet the Keys!", emoji:"👋", levels:["explorer","adventurer","musician"],
-        steps:[
-          {text:"The piano has black and white keys. Today we meet the white ones!", icon:"🎹"},
-          {text:"There are 7 special notes: C D E F G A B — just like the start of the alphabet!", icon:"🔤"},
-          {text:"Each note has an animal friend! C = Catty 🐱, D = Doggy 🐶, E = Effy Frog 🐸…", icon:"🐱"},
-          {text:"Find note C! It's always to the LEFT of 2 black keys grouped together.", icon:"🎯"},
-        ],
-      },
-      {
-        id:"finger-numbers", title:"Finger Numbers", emoji:"🖐️", levels:["explorer","adventurer","musician"],
-        steps:[
-          {text:"Each finger has a number. Your THUMB is finger 1!", icon:"👍"},
-          {text:"Pointer = 2, Middle = 3, Ring = 4, Pinky = 5. Hold up your hand and count!", icon:"✌️"},
-          {text:"Wiggle each finger one at a time and say its number out loud.", icon:"🎵"},
-          {text:"Using the right finger for each note helps you play fast and without tangling!", icon:"⚡"},
-        ],
-      },
-      {
-        id:"posture", title:"Piano Posture", emoji:"🧍", levels:["explorer","adventurer","musician"],
-        steps:[
-          {text:"Sit up tall like a giraffe — proud but relaxed, not stiff!", icon:"🦒"},
-          {text:"Feet flat on the floor or a stool. No dangling legs!", icon:"🦶"},
-          {text:"Wrists up — imagine you're gently holding a soap bubble in each hand.", icon:"🫧"},
-          {text:"Fingers curved softly — like petting a sleeping kitten 🐾", icon:"🐾"},
-        ],
-      },
-      {
-        id:"black-keys", title:"The Black Keys", emoji:"🖤", levels:["explorer","adventurer","musician"],
-        steps:[
-          {text:"Black keys come in groups of 2 and 3. Can you spot the pattern?", icon:"🔍"},
-          {text:"The group of 2 black keys helps you find C — it's always just to their left!", icon:"🎯"},
-          {text:"Black keys are called SHARPS (#) or FLATS (b). C# means 'C sharp' — a tiny step higher!", icon:"📈"},
-          {text:"Try pressing the black keys! They have a darker, mysterious sound.", icon:"🌙"},
-        ],
-      },
-      {
-        id:"reading-notes", title:"Reading Music", emoji:"📝", levels:["adventurer","musician"],
-        steps:[
-          {text:"Music is written on 5 lines called a STAFF — like a climbing frame for notes!", icon:"🎼"},
-          {text:"Notes sit ON lines or BETWEEN lines (spaces). Higher notes go higher on the staff.", icon:"📍"},
-          {text:"Remember the lines: Every Good Boy Does Fine = E G B D F", icon:"🧠"},
-          {text:"The spaces spell FACE — F A C E. Easy!", icon:"😊"},
-        ],
-      },
-      {
-        id:"rhythm", title:"Feel the Beat!", emoji:"🥁", levels:["adventurer","musician"],
-        steps:[
-          {text:"Music has a heartbeat called RHYTHM. Every song has one. Clap along to any song!", icon:"❤️"},
-          {text:"Whole note = 4 beats. Half note = 2 beats. Quarter note = 1 beat.", icon:"🕐"},
-          {text:"Clap this: CLAP……(4) clap…clap(2+2) clap.clap.clap.clap(1+1+1+1)", icon:"👏"},
-          {text:"Practice counting 1-2-3-4 out loud while you play. It's the secret weapon!", icon:"🎶"},
-        ],
-      },
-      {
-        id:"scales", title:"The C Major Scale", emoji:"🪜", levels:["musician"],
-        steps:[
-          {text:"A scale is like a musical staircase — 8 notes going up, then back down.", icon:"🪜"},
-          {text:"The C Major scale uses ONLY white keys: C D E F G A B C", icon:"⬜"},
-          {text:"Finger pattern right hand: 1 2 3 | thumb under | 1 2 3 4 5. Thumb tucks under after finger 3!", icon:"🖐️"},
-          {text:"Practise slowly, hands separately. Speed comes later — accuracy always first!", icon:"🐢"},
-        ],
-      },
-      {
-        id:"dynamics", title:"Loud & Soft (Dynamics)", emoji:"🔊", levels:["musician"],
-        steps:[
-          {text:"DYNAMICS means how loud or soft you play. It makes music come alive!", icon:"🎭"},
-          {text:"FORTE (f) = loud and strong 💪. PIANO (p) = soft and gentle 🤫", icon:"🔊"},
-          {text:"CRESCENDO means getting gradually LOUDER. DIMINUENDO = getting softer.", icon:"📈"},
-          {text:"Try playing Twinkle softly at the start, then build louder to 'Little Star'!", icon:"⭐"},
-        ],
-      },
+      {id:"meet-keys",      title:"Meet the Keys!",        emoji:"👋", levels:["explorer","adventurer","musician"],
+       steps:[
+         {text:"The piano has black and white keys. Today we meet the white ones!", icon:"🎹"},
+         {text:"There are 7 special notes that repeat: C D E F G A B. After B, it starts again with C!", icon:"🔤"},
+         {text:"Each note has an animal friend! C = Cat 🐱, D = Dog 🐶, E = Elephant 🐘, F = Frog 🐸…", icon:"🐱"},
+         {text:"Find note C! It's always to the LEFT of a group of 2 black keys. Every octave!", icon:"🎯"},
+       ]},
+      {id:"finger-numbers", title:"Finger Numbers",        emoji:"🖐️", levels:["explorer","adventurer","musician"],
+       steps:[
+         {text:"Each finger has a number. Your THUMB is finger 1!", icon:"👍"},
+         {text:"Pointer = 2, Middle = 3, Ring = 4, Pinky = 5. Hold up your hand and count!", icon:"✌️"},
+         {text:"Wiggle each finger one at a time and say its number out loud.", icon:"🎵"},
+         {text:"Using the right finger for each note helps you play fast and without tangling!", icon:"⚡"},
+       ]},
+      {id:"posture",        title:"Piano Posture",         emoji:"🧍", levels:["explorer","adventurer","musician"],
+       steps:[
+         {text:"Sit up tall like a giraffe — proud but relaxed, not stiff!", icon:"🦒"},
+         {text:"Feet flat on the floor or a stool. No dangling legs!", icon:"🦶"},
+         {text:"Wrists up — imagine you're gently holding a soap bubble in each hand.", icon:"🫧"},
+         {text:"Fingers curved softly — like petting a sleeping kitten 🐾", icon:"🐾"},
+       ]},
+      {id:"black-keys",     title:"The Black Keys",        emoji:"🖤", levels:["explorer","adventurer","musician"],
+       steps:[
+         {text:"Black keys come in groups of 2 and 3 — this pattern repeats all the way up!", icon:"🔍"},
+         {text:"The group of 2 black keys helps you find C — it's always just to their left!", icon:"🎯"},
+         {text:"Black keys are called SHARPS (#) or FLATS (♭). C# means 'C sharp' — a tiny step higher!", icon:"📈"},
+         {text:"Try pressing the black keys! They have a darker, mysterious sound.", icon:"🌙"},
+       ]},
+      {id:"octaves",        title:"What is an Octave?",    emoji:"🪜", levels:["explorer","adventurer","musician"],
+       steps:[
+         {text:"An OCTAVE is a group of 8 notes — from one C up to the next C!", icon:"🪜"},
+         {text:"The keyboard has 3 octaves on screen. The same 7 notes just get higher each time.", icon:"📐"},
+         {text:"Play C3, then C4, then C5 — same note, but getting higher in pitch!", icon:"🎵"},
+         {text:"Octaves have the same ANIMAL in our app! Every C is a Cat 🐱, no matter which octave.", icon:"🐱"},
+       ]},
+      {id:"reading-notes",  title:"Reading Music",         emoji:"📝", levels:["adventurer","musician"],
+       steps:[
+         {text:"Music is written on 5 lines called a STAFF — like a climbing frame for notes!", icon:"🎼"},
+         {text:"Notes sit ON lines or BETWEEN lines (spaces). Higher notes go higher on the staff.", icon:"📍"},
+         {text:"Remember the lines: Every Good Boy Does Fine = E G B D F", icon:"🧠"},
+         {text:"The spaces spell FACE — F A C E. Easy!", icon:"😊"},
+       ]},
+      {id:"rhythm",         title:"Feel the Beat!",        emoji:"🥁", levels:["adventurer","musician"],
+       steps:[
+         {text:"Music has a heartbeat called RHYTHM. Every song has one. Clap along to any song!", icon:"❤️"},
+         {text:"Whole note = 4 beats. Half note = 2 beats. Quarter note = 1 beat.", icon:"🕐"},
+         {text:"Clap this: CLAP……(4) clap…clap(2+2) clap.clap.clap.clap(1+1+1+1)", icon:"👏"},
+         {text:"Practice counting 1-2-3-4 out loud while you play. It's the secret weapon!", icon:"🎶"},
+       ]},
+      {id:"scales",         title:"The C Major Scale",     emoji:"🎼", levels:["musician"],
+       steps:[
+         {text:"A scale is like a musical staircase — 8 notes going up, then back down.", icon:"🪜"},
+         {text:"The C Major scale uses ONLY white keys: C D E F G A B C", icon:"⬜"},
+         {text:"Finger pattern right hand: 1 2 3 | thumb under | 1 2 3 4 5. Thumb tucks under after finger 3!", icon:"🖐️"},
+         {text:"Practise slowly, hands separately. Speed comes later — accuracy always first!", icon:"🐢"},
+       ]},
+      {id:"dynamics",       title:"Loud & Soft (Dynamics)",emoji:"🔊", levels:["musician"],
+       steps:[
+         {text:"DYNAMICS means how loud or soft you play. It makes music come alive!", icon:"🎭"},
+         {text:"FORTE (f) = loud and strong 💪. PIANO (p) = soft and gentle 🤫", icon:"🔊"},
+         {text:"CRESCENDO means getting gradually LOUDER. DIMINUENDO = getting softer.", icon:"📈"},
+         {text:"Try playing Twinkle softly at the start, then build louder to 'Little Star'!", icon:"⭐"},
+       ]},
     ];
 
+    // ── THEORY CARDS ───────────────────────────────────────────────────────────
     const THEORY_CARDS = {
-      explorer: [
-        {q:"What animal is note C? 🎹", a:"🐱 Catty C!\nAlways left of the 2 black keys."},
-        {q:"How many white keys are in one octave?", a:"7 white keys!\nC  D  E  F  G  A  B"},
-        {q:"Which finger is your thumb?", a:"Finger 1!\nThumb=1  Pointer=2  Middle=3\nRing=4  Pinky=5"},
-        {q:"What animal is note G? 🎹", a:"🐢 Gerry the Turtle!\nCount up: C D E F G"},
-        {q:"Name the 7 note animals!", a:"🐱C  🐶D  🐸E  🐠F\n🐢G  🦋A  🐦B"},
+      explorer:[
+        {q:"What animal is note C? 🎹",      a:"🐱 Cat!\nAlways left of the 2 black keys."},
+        {q:"What animal is note D?",          a:"🐶 Dog!\nRight next to the Cat (C)."},
+        {q:"What animal is note E?",          a:"🐘 Elephant!\nBig ears, big sound!"},
+        {q:"What animal is note F?",          a:"🐸 Frog!\nFrog loves to leap to high notes!"},
+        {q:"What animal is note G?",          a:"🦒 Giraffe!\nTall neck, high notes!"},
+        {q:"What animal is note A?",          a:"🐊 Alligator!\nSnappy and strong."},
+        {q:"What animal is note B?",          a:"🐻 Bear!\nBig and round, like a B."},
+        {q:"How many white keys per octave?", a:"7 white keys!\nC D E F G A B"},
+        {q:"Which finger is your thumb?",     a:"Finger 1!\nThumb=1 Pointer=2 Middle=3\nRing=4 Pinky=5"},
+        {q:"Name all 7 note animals!",        a:"🐱C 🐶D 🐘E 🐸F\n🦒G 🐊A 🐻B"},
       ],
-      adventurer: [
-        {q:"What is a STAFF in music?", a:"5 horizontal lines!\nNotes sit on or between them."},
-        {q:"What does FORTE mean?", a:"LOUD! 🔊\nFrom Italian — means strong."},
-        {q:"What does PIANO mean in music?", a:"Soft and quiet 🤫\nAlso how the instrument got its name!"},
-        {q:"What is a HALF NOTE worth?", a:"2 beats!\nWhole=4  Half=2  Quarter=1"},
-        {q:"What do the staff LINES spell?", a:"Every Good Boy Does Fine\n= E  G  B  D  F"},
-        {q:"What do the staff SPACES spell?", a:"F  A  C  E\nJust like the word FACE! 😊"},
+      adventurer:[
+        {q:"What is a STAFF in music?",       a:"5 horizontal lines!\nNotes sit on or between them."},
+        {q:"What does FORTE mean?",           a:"LOUD! 🔊\nFrom Italian — means strong."},
+        {q:"What does PIANO mean in music?",  a:"Soft and quiet 🤫\nAlso how the instrument got its name!"},
+        {q:"What is a HALF NOTE worth?",      a:"2 beats!\nWhole=4  Half=2  Quarter=1"},
+        {q:"What do the staff LINES spell?",  a:"Every Good Boy Does Fine\n= E G B D F"},
+        {q:"What do the staff SPACES spell?", a:"F A C E\nJust like the word FACE! 😊"},
+        {q:"What is an octave?",              a:"8 notes — C up to the next C!\nSame note, higher pitch."},
+        {q:"How many black keys are in one octave?", a:"5 black keys!\nC# D# F# G# A#"},
       ],
-      musician: [
-        {q:"What is a CRESCENDO?", a:"Getting gradually LOUDER 📈\nOpposite: diminuendo (softer)."},
-        {q:"What does ALLEGRO mean?", a:"Fast and lively! ⚡\nAllegretto = moderately fast."},
-        {q:"What is an OCTAVE?", a:"8 notes — same note, higher pitch.\nC4 → C5 is one octave up."},
-        {q:"What is a CHORD?", a:"3+ notes played together!\nC+E+G = C Major chord 🎵"},
-        {q:"What does LEGATO mean?", a:"Smooth and connected 🌊\nOpposite: STACCATO = short & bouncy."},
-        {q:"How many beats in 3/4 time?", a:"3 beats per bar!\nWaltz time — 1-2-3, 1-2-3 💃"},
+      musician:[
+        {q:"What is a CRESCENDO?",            a:"Getting gradually LOUDER 📈\nOpposite: diminuendo (softer)."},
+        {q:"What does ALLEGRO mean?",         a:"Fast and lively! ⚡\nAllegretto = moderately fast."},
+        {q:"What is a CHORD?",                a:"3+ notes played together!\nC+E+G = C Major chord 🎵"},
+        {q:"What does LEGATO mean?",          a:"Smooth and connected 🌊\nOpposite: STACCATO = short & bouncy."},
+        {q:"How many beats in 3/4 time?",     a:"3 beats per bar!\nWaltz time — 1-2-3, 1-2-3 💃"},
+        {q:"What is a key signature?",        a:"Sharps or flats at the start of the staff\ntelling you which notes to raise or lower."},
+        {q:"What does TEMPO mean?",           a:"The speed of the music!\nMeasured in BPM (beats per minute)."},
+        {q:"What is a MAJOR scale?",          a:"8 notes with a happy, bright sound!\nC Major = all white keys from C to C."},
       ],
     };
 
+    // ── TEACHER TIPS ───────────────────────────────────────────────────────────
     const TEACHER_TIPS = [
-      {
-        title:"First Session Tips", emoji:"🌱",
-        content:[
-          "Keep it SHORT — 5–10 minutes is perfect for a 4-year-old.",
-          "Start with free exploration, no rules, no wrong notes.",
-          "Celebrate EVERY small win enthusiastically.",
-          "End before boredom — always leave them wanting more!",
-          "Let them bang freely to explore sound first.",
-        ],
-      },
-      {
-        title:"Building Good Habits", emoji:"🏗️",
-        content:[
-          "Consistency beats length — 5 min daily beats 1 hour weekly.",
-          "Model posture yourself — kids learn by watching.",
-          "Say 'I love hearing you practise!' not just 'Good job!'",
-          "Make it a ritual — same time, same spot each day.",
-          "Take monthly progress videos — showing them their own growth is magic.",
-        ],
-      },
-      {
-        title:"When They Struggle", emoji:"💪",
-        content:[
-          "Break hard passages into tiny pieces — even 2 notes at a time.",
-          "'Slow is smooth, smooth is fast' — slow practice always first.",
-          "If frustration rises, switch to something they already know well.",
-          "Never force a session — it builds negative associations.",
-          "Try 'teach a teddy bear' — explaining it to a toy helps them learn!",
-        ],
-      },
-      {
-        title:"Theory Made Fun", emoji:"🧩",
-        content:[
-          "Use coloured dot stickers on keys — one colour per note name.",
-          "Make flashcards using the note animals from this app.",
-          "Clap rhythms together in the car — no piano needed!",
-          "Ask 'what does this music make you feel?' to build emotional connection.",
-          "Sing the note names while they play — it sticks faster.",
-        ],
-      },
-      {
-        title:"Progress Milestones", emoji:"🏆",
-        content:[
-          "Age 4–5: Identifies C on keyboard; plays simple 5-note songs.",
-          "Age 5–6: Uses finger numbers; plays hands separately.",
-          "Age 6–7: Reads basic notation; plays both hands on simple songs.",
-          "Age 7–9: Understands time signatures; learns scales; reads sheet music.",
-          "Age 9+: Independent practice begins; explores preferred styles.",
-        ],
-      },
-      {
-        title:"Suggested Weekly Plan (Age 4–5)", emoji:"🗓️",
-        content:[
-          "Mon: Explore the keyboard freely — no rules! 🎲",
-          "Tue: Learn one new note name + its animal friend 🐱",
-          "Wed: Sing & clap a nursery rhyme rhythm 👏",
-          "Thu: Practise one song — just 3 notes 🎵",
-          "Fri: Theory flashcard game (3–5 cards) 🃏",
-          "Sat: Free jam + mini concert for family! 🎤",
-          "Sun: Rest day — music is everywhere ☀️",
-        ],
-      },
+      {title:"First Session Tips",           emoji:"🌱", content:[
+        "Keep it SHORT — 5–10 minutes is perfect for a 4-year-old.",
+        "Start with free exploration, no rules, no wrong notes.",
+        "Celebrate EVERY small win enthusiastically.",
+        "End before boredom — always leave them wanting more!",
+        "Let them bang freely to explore sound first.",
+      ]},
+      {title:"Building Good Habits",         emoji:"🏗️", content:[
+        "Consistency beats length — 5 min daily beats 1 hour weekly.",
+        "Model posture yourself — kids learn by watching.",
+        "Say 'I love hearing you practise!' not just 'Good job!'",
+        "Make it a ritual — same time, same spot each day.",
+        "Take monthly progress videos — showing them their own growth is magic.",
+      ]},
+      {title:"When They Struggle",           emoji:"💪", content:[
+        "Break hard passages into tiny pieces — even 2 notes at a time.",
+        "'Slow is smooth, smooth is fast' — slow practice always first.",
+        "If frustration rises, switch to something they already know well.",
+        "Never force a session — it builds negative associations.",
+        "Try 'teach a teddy bear' — explaining it to a toy helps them learn!",
+      ]},
+      {title:"Theory Made Fun",              emoji:"🧩", content:[
+        "Use coloured dot stickers on keys — one colour per note name.",
+        "Make flashcards using the note animals from this app.",
+        "Clap rhythms together in the car — no piano needed!",
+        "Ask 'what does this music make you feel?' to build emotional connection.",
+        "Sing the note names while they play — it sticks faster.",
+      ]},
+      {title:"Progress Milestones",          emoji:"🏆", content:[
+        "Age 4–5: Identifies C on keyboard; plays simple 5-note songs.",
+        "Age 5–6: Uses finger numbers; plays hands separately.",
+        "Age 6–7: Reads basic notation; plays both hands on simple songs.",
+        "Age 7–9: Understands time signatures; learns scales; reads sheet music.",
+        "Age 9+: Independent practice begins; explores preferred styles.",
+      ]},
+      {title:"Suggested Weekly Plan (Age 4–5)", emoji:"🗓️", content:[
+        "Mon: Explore the keyboard freely — no rules! 🎲",
+        "Tue: Learn one new note name + its animal friend 🐱",
+        "Wed: Sing & clap a nursery rhyme rhythm 👏",
+        "Thu: Practise one song — just 3 notes 🎵",
+        "Fri: Theory flashcard game (3–5 cards) 🃏",
+        "Sat: Free jam + mini concert for family! 🎤",
+        "Sun: Rest day — music is everywhere ☀️",
+      ]},
     ];
 
-    // ─────────────────────────────────────────────
-    // PIANO KEYBOARD
-    // ─────────────────────────────────────────────
-    function PianoKeyboard({ level, highlightNote, onNotePlay, showLabels = true }) {
+    // ── PIANO KEYBOARD COMPONENT ───────────────────────────────────────────────
+    function PianoKeyboard({ level, noteStyle, highlightNote, onNotePlay, showLabels=true }) {
       const [pressed, setPressed] = useState({});
       const isExplorer = level === "explorer";
-      const WK_W = 46, WK_H = 190, BK_W = 28, BK_H = 115;
+      const WK_W = 38, WK_H = 175, BK_W = 24, BK_H = 105;
       const totalW = WHITE_KEYS.length * WK_W;
 
       const handlePress = useCallback((fullNote) => {
         playPianoNote(fullNote);
-        setPressed(p => ({ ...p, [fullNote]: true }));
+        setPressed(p => ({...p, [fullNote]:true}));
         onNotePlay && onNotePlay(fullNote);
-        setTimeout(() => setPressed(p => { const n = { ...p }; delete n[fullNote]; return n; }), 280);
+        setTimeout(() => setPressed(p => { const n={...p}; delete n[fullNote]; return n; }), 280);
       }, [onNotePlay]);
 
+      const getNoteLabel = (note) => NOTE_LABEL[noteStyle]?.[note] || note;
+
       return (
-        <div style={{ overflowX:"auto", paddingBottom:10, WebkitOverflowScrolling:"touch" }}>
-          <div style={{ position:"relative", width:totalW, height:WK_H+12, margin:"0 auto",
-            filter:"drop-shadow(0 8px 28px rgba(0,0,0,0.18))" }}>
-            {WHITE_KEYS.map(({ note, oct }, i) => {
-              const fullNote = `${note}${oct}`;
-              const isHL = highlightNote === fullNote;
-              const isPr = !!pressed[fullNote];
-              const col = NOTE_COLORS[note];
+        <div style={{overflowX:"auto", paddingBottom:10, WebkitOverflowScrolling:"touch"}}>
+          <div style={{position:"relative", width:totalW, height:WK_H+12, margin:"0 auto",
+            filter:"drop-shadow(0 8px 24px rgba(0,0,0,0.16))"}}>
+            {WHITE_KEYS.map(({note,oct},i) => {
+              const full = `${note}${oct}`;
+              const isHL = highlightNote === full;
+              const isPr = !!pressed[full];
+              const col  = NOTE_COLORS[note];
               return (
-                <div key={fullNote + i} onPointerDown={e => { e.preventDefault(); handlePress(fullNote); }}
-                  style={{
-                    position:"absolute", left:i*WK_W, top:0,
-                    width:WK_W-2, height:WK_H,
-                    background: isPr ? col : isHL ? col+"BB" : "#FFFDF5",
-                    border:`1.5px solid ${isHL ? col : "#D8D0C0"}`,
-                    borderRadius:"0 0 10px 10px",
-                    display:"flex", flexDirection:"column", alignItems:"center",
-                    justifyContent:"flex-end", paddingBottom:10,
-                    cursor:"pointer", zIndex:1, userSelect:"none",
-                    transform: isPr ? "scaleY(0.97) translateY(3px)" : "none",
-                    boxShadow: isPr ? "none" : "0 5px 0 #B8AF9C",
-                    transition:"background 0.08s, transform 0.08s, box-shadow 0.08s",
-                  }}>
+                <div key={full+i} onPointerDown={e=>{e.preventDefault();handlePress(full);}}
+                  style={{position:"absolute", left:i*WK_W, top:0, width:WK_W-2, height:WK_H,
+                    background: isPr?col : isHL?col+"CC":"#FFFDF5",
+                    border:`1.5px solid ${isHL?col:"#D8D0C0"}`,
+                    borderRadius:"0 0 9px 9px",
+                    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"flex-end",
+                    paddingBottom:7, cursor:"pointer", zIndex:1, userSelect:"none",
+                    transform: isPr?"scaleY(0.97) translateY(3px)":"none",
+                    boxShadow: isPr?"none":"0 5px 0 #B8AF9C",
+                    transition:"background 0.08s,transform 0.08s,box-shadow 0.08s"}}>
                   {showLabels && (
-                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-                      {isExplorer && <span style={{ fontSize:16, lineHeight:1 }}>{NOTE_ANIMALS[note]}</span>}
-                      <span style={{ fontSize:isExplorer?11:10, fontWeight:800,
-                        color:isHL?col:"#999", fontFamily:"'Fredoka One', cursive" }}>
-                        {note}{!isExplorer ? oct : ""}
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+                      {isExplorer && <span style={{fontSize:13,lineHeight:1}}>{NOTE_ANIMALS[note]}</span>}
+                      <span style={{fontSize:isExplorer?9:8, fontWeight:800,
+                        color:isHL?col:"#999", fontFamily:"'Fredoka One',cursive", lineHeight:1.2}}>
+                        {getNoteLabel(note)}
                       </span>
                     </div>
                   )}
                 </div>
               );
             })}
-            {BLACK_KEY_MAP.map(({ note, oct, afterIdx }) => {
-              const fullNote = `${note}${oct}`;
-              const isPr = !!pressed[fullNote];
-              const isHL = highlightNote === fullNote;
+            {BLACK_KEY_MAP.map(({note,oct,afterIdx}) => {
+              const full = `${note}${oct}`;
+              const isPr = !!pressed[full];
+              const isHL = highlightNote === full;
               return (
-                <div key={fullNote} onPointerDown={e => { e.preventDefault(); handlePress(fullNote); }}
-                  style={{
-                    position:"absolute",
+                <div key={full} onPointerDown={e=>{e.preventDefault();handlePress(full);}}
+                  style={{position:"absolute",
                     left:(afterIdx+1)*WK_W - BK_W/2 - 1,
                     top:0, width:BK_W, height:BK_H,
-                    background: isPr?"#777": isHL?"#555":"#222",
-                    borderRadius:"0 0 7px 7px",
+                    background:isPr?"#777":isHL?"#555":"#222",
+                    borderRadius:"0 0 6px 6px",
                     cursor:"pointer", zIndex:3, userSelect:"none",
-                    boxShadow: isPr?"none":"0 4px 0 #111",
-                    transform: isPr?"translateY(3px)":"none",
-                    transition:"background 0.08s, transform 0.08s, box-shadow 0.08s",
-                    display:"flex", alignItems:"flex-end", justifyContent:"center", paddingBottom:5,
-                  }}>
+                    boxShadow:isPr?"none":"0 4px 0 #111",
+                    transform:isPr?"translateY(3px)":"none",
+                    transition:"background 0.08s,transform 0.08s,box-shadow 0.08s",
+                    display:"flex",alignItems:"flex-end",justifyContent:"center",paddingBottom:4}}>
                   {!isExplorer && (
-                    <span style={{ fontSize:8, color:"#aaa", fontWeight:700 }}>
-                      {note.replace("#","♯")}
+                    <span style={{fontSize:7,color:"#aaa",fontWeight:700}}>
+                      {(SHARP_LABEL[noteStyle]||SHARP_LABEL.abc)[note]}
                     </span>
                   )}
                 </div>
@@ -399,175 +425,154 @@
       );
     }
 
-    // ─────────────────────────────────────────────
-    // NOTE EXPLORER
-    // ─────────────────────────────────────────────
-    function NoteExplorer({ level }) {
-      const [lastNote, setLastNote] = useState(null);
-      const [animKey, setAnimKey] = useState(0);
-      const isSharp = lastNote ? lastNote.includes("#") : false;
+    // ── NOTE EXPLORER ──────────────────────────────────────────────────────────
+    function NoteExplorer({level, noteStyle}) {
+      const [lastNote,setLastNote] = useState(null);
+      const [animKey,setAnimKey]   = useState(0);
+      const isSharp  = lastNote ? lastNote.includes("#") : false;
       const baseNote = lastNote ? lastNote.replace(/[#\d]/g,"") : null;
-
-      const handlePlay = (note) => { setLastNote(note); setAnimKey(k => k+1); };
-
+      const handlePlay = note => { setLastNote(note); setAnimKey(k=>k+1); };
+      const funName = NOTE_FUN[noteStyle]||NOTE_FUN.abc;
       return (
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:24 }}>
-          <p style={{ textAlign:"center", fontSize:15, color:"#666", maxWidth:420 }}>
-            Press any key! Each note has a name, colour, and a friend 🎹
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:20}}>
+          <p style={{textAlign:"center",fontSize:14,color:"#666",maxWidth:440}}>
+            Press any key! Each note has a name, colour, and an animal friend 🎹
           </p>
-          <PianoKeyboard level={level} onNotePlay={handlePlay} showLabels />
-          <div style={{ minHeight:110, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <PianoKeyboard level={level} noteStyle={noteStyle} onNotePlay={handlePlay} showLabels />
+          <div style={{minHeight:110,display:"flex",alignItems:"center",justifyContent:"center"}}>
             {lastNote && !isSharp && baseNote && NOTE_ANIMALS[baseNote] ? (
               <div key={animKey} style={{
                 background:`${NOTE_COLORS[baseNote]}22`,
                 border:`2.5px solid ${NOTE_COLORS[baseNote]}`,
-                borderRadius:24, padding:"18px 40px", textAlign:"center",
-                animation:"pop 0.3s cubic-bezier(.36,.07,.19,.97) both",
-              }}>
-                <div style={{ fontSize:44 }}>{NOTE_ANIMALS[baseNote]}</div>
-                <div style={{ fontSize:22, fontWeight:800, color:NOTE_COLORS[baseNote], fontFamily:"'Fredoka One', cursive" }}>
-                  {NOTE_FUN_NAME[baseNote]}
+                borderRadius:24, padding:"16px 36px", textAlign:"center",
+                animation:"pop 0.3s cubic-bezier(.36,.07,.19,.97) both"}}>
+                <div style={{fontSize:40}}>{NOTE_ANIMALS[baseNote]}</div>
+                <div style={{fontSize:20,fontWeight:800,color:NOTE_COLORS[baseNote],fontFamily:"'Fredoka One',cursive"}}>
+                  {funName[baseNote]}
                 </div>
-                <div style={{ fontSize:13, color:"#888", marginTop:4 }}>{lastNote}</div>
+                <div style={{fontSize:12,color:"#888",marginTop:3}}>{lastNote}</div>
               </div>
             ) : lastNote ? (
-              <div key={animKey} style={{ background:"#2D2D2D", borderRadius:20,
-                padding:"16px 32px", textAlign:"center", animation:"pop 0.3s ease both" }}>
-                <div style={{ fontSize:26, color:"#fff", fontWeight:900, fontFamily:"'Fredoka One', cursive" }}>
+              <div key={animKey} style={{background:"#2D2D2D",borderRadius:20,
+                padding:"14px 28px",textAlign:"center",animation:"pop 0.3s ease both"}}>
+                <div style={{fontSize:22,color:"#fff",fontWeight:900,fontFamily:"'Fredoka One',cursive"}}>
                   {lastNote.replace("#","♯")}
                 </div>
-                <div style={{ fontSize:13, color:"#aaa", marginTop:4 }}>Sharp key ✨</div>
+                <div style={{fontSize:12,color:"#aaa",marginTop:3}}>Sharp key ✨</div>
               </div>
             ) : (
-              <div style={{ color:"#ccc", fontSize:15 }}>← Press a key above!</div>
+              <div style={{color:"#ccc",fontSize:14}}>← Press a key above!</div>
             )}
           </div>
         </div>
       );
     }
 
-    // ─────────────────────────────────────────────
-    // SONG PLAYER
-    // ─────────────────────────────────────────────
-    function SongPlayer({ song, level }) {
-      const [currentIdx, setCurrentIdx] = useState(-1);
-      const [isPlaying, setIsPlaying] = useState(false);
-      const [completed, setCompleted] = useState(false);
-      const [mode, setMode] = useState("demo");
-      const [score, setScore] = useState(0);
-      const [streak, setStreak] = useState(0);
+    // ── SONG PLAYER ────────────────────────────────────────────────────────────
+    function SongPlayer({song, level, noteStyle}) {
+      const [currentIdx,setCurrentIdx] = useState(-1);
+      const [isPlaying,setIsPlaying]   = useState(false);
+      const [completed,setCompleted]   = useState(false);
+      const [mode,setMode]             = useState("demo");
+      const [score,setScore]           = useState(0);
+      const [streak,setStreak]         = useState(0);
       const timerRef = useRef([]);
-
-      const clearTimers = () => { timerRef.current.forEach(clearTimeout); timerRef.current = []; };
+      const clearTimers = () => { timerRef.current.forEach(clearTimeout); timerRef.current=[]; };
 
       const playDemo = () => {
         clearTimers(); setIsPlaying(true); setCompleted(false); setCurrentIdx(-1);
-        let delay = 80;
-        song.notes.forEach((note, i) => {
-          const t = setTimeout(() => {
-            setCurrentIdx(i);
-            playPianoNote(note, (song.timing[i]||400)/1000*0.85);
-          }, delay);
+        let delay=80;
+        song.notes.forEach((note,i) => {
+          const t=setTimeout(()=>{ setCurrentIdx(i); playPianoNote(note,(song.timing[i]||400)/1000*0.85); }, delay);
           timerRef.current.push(t);
-          delay += (song.timing[i]||400) + 60;
+          delay+=(song.timing[i]||400)+60;
         });
-        const end = setTimeout(() => { setIsPlaying(false); setCurrentIdx(-1); setCompleted(true); }, delay);
+        const end=setTimeout(()=>{ setIsPlaying(false); setCurrentIdx(-1); setCompleted(true); }, delay);
         timerRef.current.push(end);
       };
-
-      const startPlay = () => {
-        clearTimers(); setMode("play"); setCurrentIdx(0); setScore(0); setStreak(0); setCompleted(false);
-      };
-
-      const handleNotePlay = (note) => {
-        if (mode !== "play" || completed) return;
-        const idx = currentIdx < 0 ? 0 : currentIdx;
-        if (idx >= song.notes.length) return;
-        if (note === song.notes[idx]) {
-          const ns = streak + 1;
-          setStreak(ns);
-          setScore(s => s + 10 + (ns >= 3 ? 5 : 0));
-          const next = idx + 1;
-          setCurrentIdx(next);
-          if (next >= song.notes.length) setCompleted(true);
+      const startPlay = () => { clearTimers(); setMode("play"); setCurrentIdx(0); setScore(0); setStreak(0); setCompleted(false); };
+      const handleNotePlay = note => {
+        if (mode!=="play"||completed) return;
+        const idx=currentIdx<0?0:currentIdx;
+        if (idx>=song.notes.length) return;
+        if (note===song.notes[idx]) {
+          const ns=streak+1; setStreak(ns);
+          setScore(s=>s+10+(ns>=3?5:0));
+          const next=idx+1; setCurrentIdx(next);
+          if (next>=song.notes.length) setCompleted(true);
         }
       };
+      useEffect(()=>()=>clearTimers(),[]);
 
-      useEffect(() => () => clearTimers(), []);
-
-      const hlIdx = currentIdx >= 0 && currentIdx < song.notes.length ? currentIdx : -1;
-      const highlightNote = hlIdx >= 0 ? song.notes[hlIdx] : null;
-      const progress = mode==="play" && currentIdx > 0 ? Math.round((currentIdx/song.notes.length)*100) : 0;
+      const hlNote = currentIdx>=0&&currentIdx<song.notes.length ? song.notes[currentIdx] : null;
+      const progress = mode==="play"&&currentIdx>0 ? Math.round((currentIdx/song.notes.length)*100) : 0;
 
       return (
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:18 }}>
-          <div style={{ display:"flex", gap:10 }}>
-            <button onClick={() => { setMode("demo"); setCompleted(false); setCurrentIdx(-1); setIsPlaying(false); clearTimers(); }}
-              style={{ padding:"9px 22px", borderRadius:20, border:"none", cursor:"pointer", fontWeight:800, fontSize:14,
-                background:mode==="demo"?"#FF6B9D":"#F0F0F0", color:mode==="demo"?"#fff":"#555", transition:"all 0.2s" }}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>{ setMode("demo"); setCompleted(false); setCurrentIdx(-1); setIsPlaying(false); clearTimers(); }}
+              style={{padding:"9px 20px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:13,
+                background:mode==="demo"?"#FF6B9D":"#F0F0F0",color:mode==="demo"?"#fff":"#555",transition:"all 0.2s"}}>
               👀 Watch Demo
             </button>
             <button onClick={startPlay}
-              style={{ padding:"9px 22px", borderRadius:20, border:"none", cursor:"pointer", fontWeight:800, fontSize:14,
-                background:mode==="play"?"#845EF7":"#F0F0F0", color:mode==="play"?"#fff":"#555", transition:"all 0.2s" }}>
+              style={{padding:"9px 20px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:800,fontSize:13,
+                background:mode==="play"?"#845EF7":"#F0F0F0",color:mode==="play"?"#fff":"#555",transition:"all 0.2s"}}>
               🎹 I'll Play!
             </button>
           </div>
           {mode==="demo" && (
             <button onClick={playDemo} disabled={isPlaying}
-              style={{ padding:"12px 36px", borderRadius:24, border:"none", cursor:isPlaying?"default":"pointer",
+              style={{padding:"11px 32px",borderRadius:24,border:"none",cursor:isPlaying?"default":"pointer",
                 background:isPlaying?"#CCC":"linear-gradient(135deg,#FF6B9D,#845EF7)",
-                color:"#fff", fontWeight:900, fontSize:16,
-                boxShadow:isPlaying?"none":"0 4px 16px rgba(132,94,247,0.3)" }}>
-              {isPlaying ? "♪ Playing…" : "▶  Play Demo"}
+                color:"#fff",fontWeight:900,fontSize:15,boxShadow:isPlaying?"none":"0 4px 16px rgba(132,94,247,0.3)"}}>
+              {isPlaying?"♪ Playing…":"▶  Play Demo"}
             </button>
           )}
-          {mode==="play" && !completed && (
-            <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:13, color:"#888" }}>
-                Note {Math.min(Math.max(currentIdx,0)+1, song.notes.length)} / {song.notes.length}
+          {mode==="play"&&!completed && (
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:12,color:"#888"}}>Note {Math.min(Math.max(currentIdx,0)+1,song.notes.length)} / {song.notes.length}</div>
+              <div style={{display:"flex",gap:14,justifyContent:"center",marginTop:5}}>
+                <span style={{fontWeight:800,fontSize:18,color:"#845EF7"}}>⭐ {score}</span>
+                {streak>=3&&<span style={{fontWeight:800,fontSize:14,color:"#FF6B9D"}}>🔥 ×{streak}</span>}
               </div>
-              <div style={{ display:"flex", gap:16, justifyContent:"center", marginTop:6 }}>
-                <span style={{ fontWeight:800, fontSize:20, color:"#845EF7" }}>⭐ {score}</span>
-                {streak >= 3 && <span style={{ fontWeight:800, fontSize:16, color:"#FF6B9D" }}>🔥 ×{streak}</span>}
-              </div>
-              <div style={{ width:280, height:8, background:"#F0F0F0", borderRadius:4, marginTop:8, overflow:"hidden" }}>
-                <div style={{ width:`${progress}%`, height:"100%",
-                  background:"linear-gradient(90deg,#FF6B9D,#845EF7)", borderRadius:4, transition:"width 0.2s" }} />
+              <div style={{width:260,height:7,background:"#F0F0F0",borderRadius:4,marginTop:7,overflow:"hidden"}}>
+                <div style={{width:`${progress}%`,height:"100%",
+                  background:"linear-gradient(90deg,#FF6B9D,#845EF7)",borderRadius:4,transition:"width 0.2s"}}/>
               </div>
             </div>
           )}
-          <PianoKeyboard level={level} highlightNote={highlightNote} onNotePlay={handleNotePlay} showLabels />
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"center", maxWidth:520 }}>
-            {song.notes.map((note, i) => {
-              const base = note.replace(/[#\d]/g,"");
-              const playIdx = currentIdx < 0 ? 0 : currentIdx;
-              const done = mode==="play" ? i < playIdx : (isPlaying && i < currentIdx);
-              const active = (mode==="demo" ? currentIdx : playIdx) === i && (mode==="play" || currentIdx>=0);
+          <PianoKeyboard level={level} noteStyle={noteStyle} highlightNote={hlNote} onNotePlay={handleNotePlay} showLabels />
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center",maxWidth:560}}>
+            {song.notes.map((note,i) => {
+              const base=note.replace(/[#\d]/g,"");
+              const playIdx=currentIdx<0?0:currentIdx;
+              const done = mode==="play"?i<playIdx:(isPlaying&&i<currentIdx);
+              const active = (mode==="demo"?currentIdx:playIdx)===i&&(mode==="play"||currentIdx>=0);
+              const label = note.includes("#")
+                ? (SHARP_LABEL[noteStyle]||SHARP_LABEL.abc)[note.replace(/\d/,"")]||note.replace(/\d/,"")
+                : (NOTE_LABEL[noteStyle]||NOTE_LABEL.abc)[base]||base;
               return (
-                <div key={i} style={{
-                  width:30, height:30, borderRadius:8, display:"flex", alignItems:"center",
-                  justifyContent:"center", fontSize:10, fontWeight:800,
+                <div key={i} style={{minWidth:28,height:28,borderRadius:7,display:"flex",alignItems:"center",
+                  justifyContent:"center",fontSize:9,fontWeight:800,padding:"0 3px",
                   background:done?(NOTE_COLORS[base]||"#845EF7"):active?(NOTE_COLORS[base]||"#845EF7")+"55":"#F0F0F0",
                   color:done?"#fff":active?"#444":"#bbb",
                   border:active?`2px solid ${NOTE_COLORS[base]||"#845EF7"}`:"2px solid transparent",
-                  transition:"all 0.15s",
-                }}>
-                  {note.replace(/\d/,"")}
+                  transition:"all 0.15s"}}>
+                  {label}
                 </div>
               );
             })}
           </div>
           {completed && (
-            <div style={{ background:"linear-gradient(135deg,#FF6B9D15,#845EF715)",
-              border:"2px solid #FF6B9D", borderRadius:20, padding:"18px 32px",
-              textAlign:"center", animation:"fadeIn 0.4s ease" }}>
-              <div style={{ fontSize:36 }}>🎉</div>
-              <div style={{ fontWeight:900, fontSize:18, color:"#FF6B9D" }}>
-                {mode==="play" ? `Brilliant! You scored ${score} points!` : "That's how it sounds!"}
+            <div style={{background:"linear-gradient(135deg,#FF6B9D15,#845EF715)",
+              border:"2px solid #FF6B9D",borderRadius:20,padding:"16px 28px",textAlign:"center",animation:"fadeIn 0.4s ease"}}>
+              <div style={{fontSize:32}}>🎉</div>
+              <div style={{fontWeight:900,fontSize:17,color:"#FF6B9D"}}>
+                {mode==="play"?`Brilliant! You scored ${score} points!`:"That's how it sounds!"}
               </div>
-              <div style={{ fontSize:13, color:"#888", marginTop:4 }}>
-                {mode==="demo" ? "Now try playing it yourself →" : "Play again to beat your score!"}
+              <div style={{fontSize:12,color:"#888",marginTop:4}}>
+                {mode==="demo"?"Now try playing it yourself →":"Play again to beat your score!"}
               </div>
             </div>
           )}
@@ -575,129 +580,113 @@
       );
     }
 
-    // ─────────────────────────────────────────────
-    // LESSON VIEWER
-    // ─────────────────────────────────────────────
-    function LessonViewer({ lesson, onClose }) {
-      const [step, setStep] = useState(0);
-      const cur = lesson.steps[step];
-      const isLast = step === lesson.steps.length - 1;
+    // ── LESSON VIEWER ──────────────────────────────────────────────────────────
+    function LessonViewer({lesson, onClose}) {
+      const [step,setStep]=useState(0);
+      const cur=lesson.steps[step];
+      const isLast=step===lesson.steps.length-1;
       return (
-        <div style={{ background:"#fff", borderRadius:28, padding:32,
-          boxShadow:"0 24px 64px rgba(0,0,0,0.12)", maxWidth:480, width:"100%" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-            <span style={{ fontSize:20, fontWeight:900, fontFamily:"'Fredoka One', cursive", color:"#333" }}>
+        <div style={{background:"#fff",borderRadius:28,padding:28,
+          boxShadow:"0 24px 64px rgba(0,0,0,0.12)",maxWidth:480,width:"100%"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+            <span style={{fontSize:18,fontWeight:900,fontFamily:"'Fredoka One',cursive",color:"#333"}}>
               {lesson.emoji} {lesson.title}
             </span>
-            <button onClick={onClose}
-              style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#bbb" }}>✕</button>
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#bbb"}}>✕</button>
           </div>
-          <div style={{ display:"flex", gap:6, marginBottom:24 }}>
-            {lesson.steps.map((_,i) => (
-              <div key={i} style={{ flex:1, height:6, borderRadius:3,
-                background:i<=step?"#FF6B9D":"#F0F0F0", transition:"background 0.3s" }} />
+          <div style={{display:"flex",gap:5,marginBottom:22}}>
+            {lesson.steps.map((_,i)=>(
+              <div key={i} style={{flex:1,height:5,borderRadius:3,
+                background:i<=step?"#FF6B9D":"#F0F0F0",transition:"background 0.3s"}}/>
             ))}
           </div>
-          <div style={{ textAlign:"center", padding:"32px 20px",
-            background:"linear-gradient(135deg,#FFF0F6,#F3F0FF)", borderRadius:20, marginBottom:24,
-            minHeight:160, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-            <div style={{ fontSize:52, marginBottom:16 }}>{cur.icon}</div>
-            <p style={{ fontSize:17, lineHeight:1.65, color:"#444", fontWeight:600 }}>{cur.text}</p>
+          <div style={{textAlign:"center",padding:"28px 16px",
+            background:"linear-gradient(135deg,#FFF0F6,#F3F0FF)",borderRadius:18,marginBottom:22,
+            minHeight:150,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontSize:48,marginBottom:14}}>{cur.icon}</div>
+            <p style={{fontSize:16,lineHeight:1.65,color:"#444",fontWeight:600}}>{cur.text}</p>
           </div>
-          <div style={{ display:"flex", gap:12, justifyContent:"space-between" }}>
-            <button onClick={() => setStep(s => Math.max(0, s-1))} disabled={step===0}
-              style={{ padding:"11px 24px", borderRadius:16, border:"2px solid #E0E0E0",
-                background:"none", cursor:step===0?"default":"pointer",
-                color:step===0?"#ccc":"#888", fontWeight:800 }}>← Back</button>
+          <div style={{display:"flex",gap:10,justifyContent:"space-between"}}>
+            <button onClick={()=>setStep(s=>Math.max(0,s-1))} disabled={step===0}
+              style={{padding:"10px 22px",borderRadius:14,border:"2px solid #E0E0E0",
+                background:"none",cursor:step===0?"default":"pointer",color:step===0?"#ccc":"#888",fontWeight:800}}>← Back</button>
             {isLast
-              ? <button onClick={onClose} style={{ padding:"11px 32px", borderRadius:16, border:"none",
-                  background:"linear-gradient(135deg,#FF6B9D,#845EF7)", color:"#fff",
-                  fontWeight:900, fontSize:15, cursor:"pointer" }}>✅ Done!</button>
-              : <button onClick={() => setStep(s => s+1)} style={{ padding:"11px 32px", borderRadius:16,
-                  border:"none", background:"#FF6B9D", color:"#fff", fontWeight:900, fontSize:15, cursor:"pointer" }}>
-                  Next →
-                </button>}
+              ?<button onClick={onClose} style={{padding:"10px 28px",borderRadius:14,border:"none",
+                  background:"linear-gradient(135deg,#FF6B9D,#845EF7)",color:"#fff",fontWeight:900,fontSize:14,cursor:"pointer"}}>✅ Done!</button>
+              :<button onClick={()=>setStep(s=>s+1)} style={{padding:"10px 28px",borderRadius:14,
+                  border:"none",background:"#FF6B9D",color:"#fff",fontWeight:900,fontSize:14,cursor:"pointer"}}>Next →</button>}
           </div>
         </div>
       );
     }
 
-    // ─────────────────────────────────────────────
-    // THEORY FLASHCARDS
-    // ─────────────────────────────────────────────
-    function TheoryCards({ level }) {
-      const cards = THEORY_CARDS[level] || THEORY_CARDS.explorer;
-      const [idx, setIdx] = useState(0);
-      const [flipped, setFlipped] = useState(false);
-      const safeIdx = Math.min(idx, cards.length-1);
-      const prev = () => { setIdx(i => i<=0 ? cards.length-1 : i-1); setFlipped(false); };
-      const next = () => { setIdx(i => i>=cards.length-1 ? 0 : i+1); setFlipped(false); };
-      const goTo = (i) => { setIdx(i); setFlipped(false); };
-      const card = cards[safeIdx];
+    // ── THEORY FLASHCARDS ──────────────────────────────────────────────────────
+    function TheoryCards({level}) {
+      const cards=THEORY_CARDS[level]||THEORY_CARDS.explorer;
+      const [idx,setIdx]=useState(0);
+      const [flipped,setFlipped]=useState(false);
+      const safeIdx=Math.min(idx,cards.length-1);
+      const prev=()=>{ setIdx(i=>i<=0?cards.length-1:i-1); setFlipped(false); };
+      const next=()=>{ setIdx(i=>i>=cards.length-1?0:i+1); setFlipped(false); };
+      const card=cards[safeIdx];
       return (
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:20 }}>
-          <div style={{ fontSize:13, color:"#888" }}>Card {safeIdx+1} of {cards.length}</div>
-          <div onClick={() => setFlipped(f => !f)} style={{
-            width:320, minHeight:190, borderRadius:24, cursor:"pointer",
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:18}}>
+          <div style={{fontSize:12,color:"#888"}}>Card {safeIdx+1} of {cards.length}</div>
+          <div onClick={()=>setFlipped(f=>!f)} style={{
+            width:310,minHeight:185,borderRadius:22,cursor:"pointer",
             background:flipped?"linear-gradient(135deg,#845EF7,#FF6B9D)":"linear-gradient(135deg,#FF6B9D,#FF9F43)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            padding:28, textAlign:"center",
-            boxShadow:"0 12px 40px rgba(0,0,0,0.15)", transition:"background 0.35s ease",
-          }}>
-            <div style={{ color:"#fff", fontWeight:700, fontSize:17, lineHeight:1.6, whiteSpace:"pre-line" }}>
-              {flipped ? card.a : card.q}
-              {!flipped && <div style={{ marginTop:14, fontSize:12, opacity:0.75 }}>👆 Tap to reveal!</div>}
+            display:"flex",alignItems:"center",justifyContent:"center",
+            padding:26,textAlign:"center",
+            boxShadow:"0 10px 36px rgba(0,0,0,0.14)",transition:"background 0.35s ease"}}>
+            <div style={{color:"#fff",fontWeight:700,fontSize:16,lineHeight:1.6,whiteSpace:"pre-line"}}>
+              {flipped?card.a:card.q}
+              {!flipped&&<div style={{marginTop:12,fontSize:11,opacity:0.75}}>👆 Tap to reveal!</div>}
             </div>
           </div>
-          <div style={{ display:"flex", gap:12 }}>
-            <button onClick={prev}
-              style={{ padding:"10px 24px", borderRadius:16, border:"2px solid #E0E0E0",
-                background:"none", cursor:"pointer", fontWeight:800, color:"#666" }}>← Prev</button>
-            <button onClick={next}
-              style={{ padding:"10px 24px", borderRadius:16, border:"none",
-                background:"#845EF7", color:"#fff", cursor:"pointer", fontWeight:800 }}>Next →</button>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={prev} style={{padding:"9px 22px",borderRadius:14,border:"2px solid #E0E0E0",
+              background:"none",cursor:"pointer",fontWeight:800,color:"#666"}}>← Prev</button>
+            <button onClick={next} style={{padding:"9px 22px",borderRadius:14,border:"none",
+              background:"#845EF7",color:"#fff",cursor:"pointer",fontWeight:800}}>Next →</button>
           </div>
-          <div style={{ display:"flex", gap:7 }}>
-            {cards.map((_,i) => (
-              <div key={i} onClick={() => goTo(i)} style={{
-                width:9, height:9, borderRadius:"50%", cursor:"pointer",
-                background:i===safeIdx?"#845EF7":"#DDD", transition:"background 0.2s",
-              }} />
+          <div style={{display:"flex",gap:6}}>
+            {cards.map((_,i)=>(
+              <div key={i} onClick={()=>{setIdx(i);setFlipped(false);}} style={{
+                width:8,height:8,borderRadius:"50%",cursor:"pointer",
+                background:i===safeIdx?"#845EF7":"#DDD",transition:"background 0.2s"}}/>
             ))}
           </div>
         </div>
       );
     }
 
-    // ─────────────────────────────────────────────
-    // TEACHER SECTION
-    // ─────────────────────────────────────────────
+    // ── TEACHER SECTION ────────────────────────────────────────────────────────
     function TeacherSection() {
-      const [open, setOpen] = useState(null);
+      const [open,setOpen]=useState(null);
       return (
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          <div style={{ background:"linear-gradient(135deg,#FFF8E7,#FFF0F6)",
-            borderRadius:20, padding:"18px 22px", border:"2px solid #FFD43B" }}>
-            <div style={{ fontSize:19, fontWeight:900, marginBottom:6 }}>👩‍🏫 Teacher's Corner</div>
-            <p style={{ fontSize:14, color:"#666", lineHeight:1.65 }}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{background:"linear-gradient(135deg,#FFF8E7,#FFF0F6)",
+            borderRadius:18,padding:"16px 20px",border:"2px solid #FFD43B"}}>
+            <div style={{fontSize:18,fontWeight:900,marginBottom:5}}>👩‍🏫 Teacher's Corner</div>
+            <p style={{fontSize:14,color:"#666",lineHeight:1.65}}>
               Everything you need to guide your child's piano journey — no musical experience required.
               Just patience, enthusiasm, and 10 minutes a day!
             </p>
           </div>
-          {TEACHER_TIPS.map((tip, i) => (
-            <div key={i} style={{ background:"#fff", borderRadius:20,
-              border:`2px solid ${open===i?"#845EF7":"#F0F0F0"}`, overflow:"hidden", transition:"border 0.2s" }}>
-              <button onClick={() => setOpen(open===i ? null : i)}
-                style={{ width:"100%", padding:"15px 20px", background:"none", border:"none",
-                  cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span style={{ fontSize:15, fontWeight:900, color:"#333" }}>{tip.emoji} {tip.title}</span>
-                <span style={{ fontSize:22, color:"#845EF7", display:"inline-block",
-                  transition:"transform 0.2s", transform:open===i?"rotate(90deg)":"none" }}>›</span>
+          {TEACHER_TIPS.map((tip,i)=>(
+            <div key={i} style={{background:"#fff",borderRadius:18,
+              border:`2px solid ${open===i?"#845EF7":"#F0F0F0"}`,overflow:"hidden",transition:"border 0.2s"}}>
+              <button onClick={()=>setOpen(open===i?null:i)}
+                style={{width:"100%",padding:"14px 18px",background:"none",border:"none",
+                  cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:14,fontWeight:900,color:"#333"}}>{tip.emoji} {tip.title}</span>
+                <span style={{fontSize:20,color:"#845EF7",display:"inline-block",
+                  transition:"transform 0.2s",transform:open===i?"rotate(90deg)":"none"}}>›</span>
               </button>
-              {open===i && (
-                <ul style={{ margin:0, padding:"0 20px 18px 36px" }}>
-                  {tip.content.map((item,j) => (
-                    <li key={j} style={{ marginBottom:9, fontSize:14, color:"#555", lineHeight:1.6 }}>{item}</li>
+              {open===i&&(
+                <ul style={{margin:0,padding:"0 18px 16px 32px"}}>
+                  {tip.content.map((item,j)=>(
+                    <li key={j} style={{marginBottom:8,fontSize:13,color:"#555",lineHeight:1.6}}>{item}</li>
                   ))}
                 </ul>
               )}
@@ -707,125 +696,213 @@
       );
     }
 
-    // ─────────────────────────────────────────────
-    // ROOT APP
-    // ─────────────────────────────────────────────
+    // ── SETUP SCREEN ───────────────────────────────────────────────────────────
+    function SetupScreen({onStart}) {
+      const [level,setLevel]         = useState("explorer");
+      const [noteStyle,setNoteStyle] = useState("abc");
+      const lvl = LEVELS[level];
+      return (
+        <div style={{minHeight:"100vh",background:`linear-gradient(${lvl.grad})`,
+          display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:"#fff",borderRadius:28,padding:32,maxWidth:440,width:"100%",
+            boxShadow:"0 24px 64px rgba(0,0,0,0.15)"}}>
+            <div style={{textAlign:"center",marginBottom:24}}>
+              <div style={{fontSize:42,marginBottom:8}}>🎹</div>
+              <div style={{fontSize:26,fontWeight:900,color:"#333",fontFamily:"'Fredoka One',cursive"}}>Piano Adventure</div>
+              <div style={{fontSize:13,color:"#888",marginTop:4}}>Let's set up your adventure!</div>
+            </div>
+
+            {/* Level */}
+            <div style={{marginBottom:22}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#555",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>
+                🌟 Choose Your Level
+              </div>
+              {Object.entries(LEVELS).map(([key,val])=>(
+                <button key={key} onClick={()=>setLevel(key)}
+                  style={{width:"100%",marginBottom:8,padding:"12px 16px",borderRadius:16,
+                    border:`2px solid ${level===key?val.color:"#F0F0F0"}`,
+                    background:level===key?val.color+"15":"#fff",
+                    cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all 0.2s",textAlign:"left"}}>
+                  <span style={{fontSize:22}}>{val.label.split(" ")[0]}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:900,fontSize:14,color:level===key?val.color:"#333"}}>{val.label.split(" ").slice(1).join(" ")}</div>
+                    <div style={{fontSize:11,color:"#aaa"}}>Age {val.age}</div>
+                  </div>
+                  {level===key&&<span style={{fontSize:16,color:val.color}}>✓</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Note style */}
+            <div style={{marginBottom:28}}>
+              <div style={{fontSize:13,fontWeight:800,color:"#555",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>
+                🎵 Note Naming System
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                {[
+                  {key:"abc",    label:"ABC",     sub:"C D E F G A B",    emoji:"🔤"},
+                  {key:"doremi", label:"Do Re Mi", sub:"Do Re Mi Fa Sol…", emoji:"🎶"},
+                ].map(({key,label,sub,emoji})=>(
+                  <button key={key} onClick={()=>setNoteStyle(key)}
+                    style={{flex:1,padding:"12px 10px",borderRadius:16,
+                      border:`2px solid ${noteStyle===key?"#845EF7":"#F0F0F0"}`,
+                      background:noteStyle===key?"#845EF715":"#fff",
+                      cursor:"pointer",textAlign:"center",transition:"all 0.2s"}}>
+                    <div style={{fontSize:20,marginBottom:4}}>{emoji}</div>
+                    <div style={{fontWeight:900,fontSize:13,color:noteStyle===key?"#845EF7":"#333"}}>{label}</div>
+                    <div style={{fontSize:10,color:"#aaa",marginTop:2}}>{sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={()=>onStart(level,noteStyle)}
+              style={{width:"100%",padding:"14px",borderRadius:18,border:"none",
+                background:`linear-gradient(${lvl.grad})`,
+                color:"#fff",fontWeight:900,fontSize:17,cursor:"pointer",
+                boxShadow:"0 6px 20px rgba(0,0,0,0.15)",fontFamily:"'Fredoka One',cursive",letterSpacing:0.5}}>
+              Let's Play! 🎹
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── ROOT APP ───────────────────────────────────────────────────────────────
     function PianoApp() {
-      const [level, setLevel] = useState("explorer");
-      const [tab, setTab] = useState("explore");
-      const [selectedLesson, setSelectedLesson] = useState(null);
-      const [selectedSong, setSelectedSong] = useState(null);
-      const [completedLessons, setCompletedLessons] = useState([]);
+      const [screen,setScreen]               = useState("setup"); // "setup"|"app"
+      const [level,setLevel]                 = useState("explorer");
+      const [noteStyle,setNoteStyle]         = useState("abc");
+      const [tab,setTab]                     = useState("explore");
+      const [selectedLesson,setSelectedLesson] = useState(null);
+      const [selectedSong,setSelectedSong]   = useState(null);
+      const [completedLessons,setCompletedLessons] = useState([]);
 
       const lvl = LEVELS[level];
+      const unlockAudio = () => { try{ getAudioCtx().resume(); }catch(e){} };
 
-      const filteredLessons = useMemo(() => LESSONS.filter(l => l.levels.includes(level)), [level]);
-      const filteredSongs = useMemo(() => {
-        if (level==="explorer") return SONGS.filter(s => s.level==="explorer");
-        if (level==="adventurer") return SONGS.filter(s => s.level!=="musician");
+      const filteredLessons = useMemo(()=>LESSONS.filter(l=>l.levels.includes(level)),[level]);
+      const filteredSongs   = useMemo(()=>{
+        if (level==="explorer")   return SONGS.filter(s=>s.level==="explorer");
+        if (level==="adventurer") return SONGS.filter(s=>s.level!=="musician");
         return SONGS;
-      }, [level]);
+      },[level]);
 
-      const unlockAudio = () => { try { getAudioCtx().resume(); } catch(e){} };
-      const switchLevel = (k) => { setLevel(k); setSelectedSong(null); setSelectedLesson(null); };
-      const switchTab = (t) => { setTab(t); setSelectedSong(null); };
+      const switchLevel = k => { setLevel(k); setSelectedSong(null); setSelectedLesson(null); };
+      const switchTab   = t => { setTab(t); setSelectedSong(null); };
 
-      const TABS = [
-        { id:"explore", label:"🎹 Explore" },
-        { id:"lessons", label:"📚 Learn" },
-        { id:"songs",   label:"🎵 Songs" },
-        { id:"theory",  label:"🃏 Theory" },
-        { id:"teacher", label:"👩‍🏫 Parent" },
+      if (screen==="setup") {
+        return <SetupScreen onStart={(lv,ns)=>{ setLevel(lv); setNoteStyle(ns); setScreen("app"); }} />;
+      }
+
+      const TABS=[
+        {id:"explore", label:"🎹 Explore"},
+        {id:"lessons", label:"📚 Learn"},
+        {id:"songs",   label:"🎵 Songs"},
+        {id:"theory",  label:"🃏 Theory"},
+        {id:"teacher", label:"👩‍🏫 Parent"},
       ];
 
       if (selectedLesson) {
         return (
           <div onPointerDown={unlockAudio}
-            style={{ minHeight:"100vh", background:"#FAF8FF",
-              display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-            <LessonViewer lesson={selectedLesson} onClose={() => {
-              setCompletedLessons(c => [...new Set([...c, selectedLesson.id])]);
+            style={{minHeight:"100vh",background:"#FAF8FF",
+              display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+            <LessonViewer lesson={selectedLesson} onClose={()=>{
+              setCompletedLessons(c=>[...new Set([...c,selectedLesson.id])]);
               setSelectedLesson(null);
-            }} />
+            }}/>
           </div>
         );
       }
 
       return (
-        <div onPointerDown={unlockAudio} style={{ minHeight:"100vh", background:"#FAF8FF" }}>
+        <div onPointerDown={unlockAudio} style={{minHeight:"100vh",background:"#FAF8FF"}}>
 
           {/* HEADER */}
-          <div style={{ background:`linear-gradient(${lvl.grad})`, padding:"18px 20px 14px", textAlign:"center" }}>
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)", letterSpacing:2, textTransform:"uppercase", marginBottom:2 }}>
-              🎹 Little Piano Star
+          <div style={{background:`linear-gradient(${lvl.grad})`,padding:"14px 16px 12px",textAlign:"center"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <button onClick={()=>setScreen("setup")}
+                style={{background:"rgba(255,255,255,0.2)",border:"none",borderRadius:10,
+                  padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>
+                ⚙ Setup
+              </button>
+              <div style={{fontSize:20,fontWeight:900,color:"#fff",fontFamily:"'Fredoka One',cursive",letterSpacing:0.5}}>
+                🎹 Piano Adventure
+              </div>
+              {/* Note style toggle */}
+              <button onClick={()=>setNoteStyle(s=>s==="abc"?"doremi":"abc")}
+                style={{background:"rgba(255,255,255,0.2)",border:"none",borderRadius:10,
+                  padding:"5px 10px",color:"#fff",fontSize:11,fontWeight:800,cursor:"pointer"}}>
+                {noteStyle==="abc"?"Do Re Mi":"ABC"}
+              </button>
             </div>
-            <div style={{ fontSize:28, fontWeight:900, color:"#fff", fontFamily:"'Fredoka One', cursive", letterSpacing:1 }}>
-              Piano Adventure
-            </div>
-            <div style={{ display:"flex", gap:7, justifyContent:"center", marginTop:12, flexWrap:"wrap" }}>
-              {Object.entries(LEVELS).map(([key, val]) => (
-                <button key={key} onClick={() => switchLevel(key)}
-                  style={{ padding:"6px 16px", borderRadius:18,
+            {/* Level pills */}
+            <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+              {Object.entries(LEVELS).map(([key,val])=>(
+                <button key={key} onClick={()=>switchLevel(key)}
+                  style={{padding:"5px 14px",borderRadius:16,
                     border:`2px solid ${level===key?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.35)"}`,
                     background:level===key?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.15)",
                     color:level===key?val.color:"#fff",
-                    fontWeight:900, fontSize:12, cursor:"pointer", transition:"all 0.2s" }}>
+                    fontWeight:900,fontSize:11,cursor:"pointer",transition:"all 0.2s"}}>
                   {val.label}
                 </button>
               ))}
             </div>
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.65)", marginTop:5 }}>Age {lvl.age}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.65)",marginTop:4}}>
+              Age {lvl.age} · {noteStyle==="abc"?"ABC notation":"Do Re Mi notation"}
+            </div>
           </div>
 
           {/* TABS */}
-          <div style={{ display:"flex", background:"#fff", boxShadow:"0 2px 10px rgba(0,0,0,0.07)", overflowX:"auto" }}>
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => switchTab(t.id)}
-                style={{ flex:"0 0 auto", padding:"13px 16px", border:"none", background:"none",
-                  cursor:"pointer", whiteSpace:"nowrap", fontWeight:800, fontSize:13,
+          <div style={{display:"flex",background:"#fff",boxShadow:"0 2px 10px rgba(0,0,0,0.07)",overflowX:"auto"}}>
+            {TABS.map(t=>(
+              <button key={t.id} onClick={()=>switchTab(t.id)}
+                style={{flex:"0 0 auto",padding:"12px 14px",border:"none",background:"none",
+                  cursor:"pointer",whiteSpace:"nowrap",fontWeight:800,fontSize:12,
                   color:tab===t.id?lvl.color:"#aaa",
-                  borderBottom:`3px solid ${tab===t.id?lvl.color:"transparent"}`,
-                  transition:"all 0.2s" }}>
+                  borderBottom:`3px solid ${tab===t.id?lvl.color:"transparent"}`,transition:"all 0.2s"}}>
                 {t.label}
               </button>
             ))}
           </div>
 
           {/* CONTENT */}
-          <div style={{ padding:"24px 16px", maxWidth:660, margin:"0 auto" }}>
+          <div style={{padding:"20px 14px",maxWidth:680,margin:"0 auto"}}>
 
-            {tab==="explore" && (
-              <div style={{ animation:"fadeIn 0.3s ease" }}>
-                <div style={{ textAlign:"center", marginBottom:20 }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#333" }}>🎹 Free Explore</div>
-                  <p style={{ fontSize:14, color:"#888", marginTop:4 }}>Press any key and discover the sounds!</p>
+            {tab==="explore"&&(
+              <div style={{animation:"fadeIn 0.3s ease"}}>
+                <div style={{textAlign:"center",marginBottom:18}}>
+                  <div style={{fontSize:20,fontWeight:900,color:"#333"}}>🎹 Free Explore</div>
+                  <p style={{fontSize:13,color:"#888",marginTop:3}}>Press any key and discover the sounds!</p>
                 </div>
-                <NoteExplorer level={level} />
+                <NoteExplorer level={level} noteStyle={noteStyle}/>
               </div>
             )}
 
-            {tab==="lessons" && (
-              <div style={{ animation:"fadeIn 0.3s ease" }}>
-                <div style={{ marginBottom:18 }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#333" }}>📚 Lessons</div>
-                  <p style={{ fontSize:14, color:"#888", marginTop:4 }}>{filteredLessons.length} lessons for {lvl.label}</p>
+            {tab==="lessons"&&(
+              <div style={{animation:"fadeIn 0.3s ease"}}>
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:20,fontWeight:900,color:"#333"}}>📚 Lessons</div>
+                  <p style={{fontSize:13,color:"#888",marginTop:3}}>{filteredLessons.length} lessons for {lvl.label}</p>
                 </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
-                  {filteredLessons.map(lesson => {
-                    const done = completedLessons.includes(lesson.id);
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {filteredLessons.map(lesson=>{
+                    const done=completedLessons.includes(lesson.id);
                     return (
-                      <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
-                        style={{ background:done?`${lvl.color}12`:"#fff",
+                      <button key={lesson.id} onClick={()=>setSelectedLesson(lesson)}
+                        style={{background:done?`${lvl.color}12`:"#fff",
                           border:`2px solid ${done?lvl.color:"#F0F0F0"}`,
-                          borderRadius:20, padding:"16px 20px", textAlign:"left",
-                          cursor:"pointer", display:"flex", alignItems:"center", gap:14, transition:"all 0.2s" }}>
-                        <span style={{ fontSize:30 }}>{lesson.emoji}</span>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:900, fontSize:15, color:"#333" }}>{lesson.title}</div>
-                          <div style={{ fontSize:12, color:"#aaa", marginTop:2 }}>{lesson.steps.length} steps</div>
+                          borderRadius:18,padding:"14px 18px",textAlign:"left",
+                          cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all 0.2s"}}>
+                        <span style={{fontSize:26}}>{lesson.emoji}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:900,fontSize:14,color:"#333"}}>{lesson.title}</div>
+                          <div style={{fontSize:11,color:"#aaa",marginTop:1}}>{lesson.steps.length} steps</div>
                         </div>
-                        {done && <span style={{ fontSize:18 }}>✅</span>}
-                        <span style={{ color:"#ccc", fontSize:20 }}>›</span>
+                        {done&&<span style={{fontSize:16}}>✅</span>}
+                        <span style={{color:"#ccc",fontSize:18}}>›</span>
                       </button>
                     );
                   })}
@@ -833,44 +910,42 @@
               </div>
             )}
 
-            {tab==="songs" && (
-              <div style={{ animation:"fadeIn 0.3s ease" }}>
-                {selectedSong ? (
+            {tab==="songs"&&(
+              <div style={{animation:"fadeIn 0.3s ease"}}>
+                {selectedSong?(
                   <div>
-                    <button onClick={() => setSelectedSong(null)}
-                      style={{ background:"none", border:"none", color:"#888", cursor:"pointer",
-                        fontWeight:800, marginBottom:16, fontSize:14 }}>← All Songs</button>
-                    <div style={{ textAlign:"center", marginBottom:20 }}>
-                      <div style={{ fontSize:32 }}>{selectedSong.emoji}</div>
-                      <div style={{ fontSize:22, fontWeight:900, color:"#333" }}>{selectedSong.title}</div>
-                      <div style={{ fontSize:12, color:"#aaa", marginTop:2 }}>
+                    <button onClick={()=>setSelectedSong(null)}
+                      style={{background:"none",border:"none",color:"#888",cursor:"pointer",
+                        fontWeight:800,marginBottom:14,fontSize:13}}>← All Songs</button>
+                    <div style={{textAlign:"center",marginBottom:18}}>
+                      <div style={{fontSize:28}}>{selectedSong.emoji}</div>
+                      <div style={{fontSize:20,fontWeight:900,color:"#333"}}>{selectedSong.title}</div>
+                      <div style={{fontSize:11,color:"#aaa",marginTop:2}}>
                         {selectedSong.notes.length} notes · {LEVELS[selectedSong.level]?.label}
                       </div>
                     </div>
-                    <SongPlayer song={selectedSong} level={level} />
+                    <SongPlayer song={selectedSong} level={level} noteStyle={noteStyle}/>
                   </div>
-                ) : (
+                ):(
                   <div>
-                    <div style={{ marginBottom:18 }}>
-                      <div style={{ fontSize:22, fontWeight:900, color:"#333" }}>🎵 Songs to Play</div>
-                      <p style={{ fontSize:14, color:"#888", marginTop:4 }}>
-                        {filteredSongs.length} songs unlocked at your level
-                      </p>
+                    <div style={{marginBottom:16}}>
+                      <div style={{fontSize:20,fontWeight:900,color:"#333"}}>🎵 Songs to Play</div>
+                      <p style={{fontSize:13,color:"#888",marginTop:3}}>{filteredSongs.length} songs at your level</p>
                     </div>
-                    <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
-                      {filteredSongs.map(song => (
-                        <button key={song.id} onClick={() => setSelectedSong(song)}
-                          style={{ background:"#fff", border:"2px solid #F0F0F0", borderRadius:20,
-                            padding:"16px 20px", textAlign:"left", cursor:"pointer",
-                            display:"flex", alignItems:"center", gap:14, transition:"all 0.2s" }}>
-                          <span style={{ fontSize:30 }}>{song.emoji}</span>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontWeight:900, fontSize:15, color:"#333" }}>{song.title}</div>
-                            <div style={{ fontSize:12, color:"#aaa", marginTop:2 }}>
+                    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                      {filteredSongs.map(song=>(
+                        <button key={song.id} onClick={()=>setSelectedSong(song)}
+                          style={{background:"#fff",border:"2px solid #F0F0F0",borderRadius:18,
+                            padding:"14px 18px",textAlign:"left",cursor:"pointer",
+                            display:"flex",alignItems:"center",gap:12,transition:"all 0.2s"}}>
+                          <span style={{fontSize:26}}>{song.emoji}</span>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:900,fontSize:14,color:"#333"}}>{song.title}</div>
+                            <div style={{fontSize:11,color:"#aaa",marginTop:1}}>
                               {song.notes.length} notes · {LEVELS[song.level]?.label}
                             </div>
                           </div>
-                          <span style={{ color:"#ccc", fontSize:20 }}>›</span>
+                          <span style={{color:"#ccc",fontSize:18}}>›</span>
                         </button>
                       ))}
                     </div>
@@ -879,21 +954,21 @@
               </div>
             )}
 
-            {tab==="theory" && (
-              <div style={{ animation:"fadeIn 0.3s ease" }}>
-                <div style={{ textAlign:"center", marginBottom:20 }}>
-                  <div style={{ fontSize:22, fontWeight:900, color:"#333" }}>🃏 Theory Cards</div>
-                  <p style={{ fontSize:14, color:"#888", marginTop:4 }}>
-                    {(THEORY_CARDS[level]||[]).length} cards for {lvl.label} — tap to reveal!
+            {tab==="theory"&&(
+              <div style={{animation:"fadeIn 0.3s ease"}}>
+                <div style={{textAlign:"center",marginBottom:18}}>
+                  <div style={{fontSize:20,fontWeight:900,color:"#333"}}>🃏 Theory Cards</div>
+                  <p style={{fontSize:13,color:"#888",marginTop:3}}>
+                    {(THEORY_CARDS[level]||[]).length} cards · tap to reveal!
                   </p>
                 </div>
-                <TheoryCards key={level} level={level} />
+                <TheoryCards key={level} level={level}/>
               </div>
             )}
 
-            {tab==="teacher" && (
-              <div style={{ animation:"fadeIn 0.3s ease" }}>
-                <TeacherSection />
+            {tab==="teacher"&&(
+              <div style={{animation:"fadeIn 0.3s ease"}}>
+                <TeacherSection/>
               </div>
             )}
 
@@ -902,9 +977,7 @@
       );
     }
 
-    // Mount
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<PianoApp />);
+    ReactDOM.createRoot(document.getElementById("root")).render(<PianoApp/>);
   </script>
 </body>
 </html>
